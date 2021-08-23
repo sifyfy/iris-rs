@@ -1,3 +1,5 @@
+#![deny(warnings, clippy::all)]
+
 pub mod log;
 
 #[cfg(test)]

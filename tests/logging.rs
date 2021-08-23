@@ -114,7 +114,7 @@ where
 
 fn app_log_regex(level: &str, message: &str) -> Result<Regex, regex::Error> {
     Regex::new(&format!(
-        r#"^\[\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}:\d{{2}}:\d{{2}}.\d+\+\d{{2}}:\d{{2}}]\[{level}] {message}$"#,
+        r#"^\[\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}:\d{{2}}:\d{{2}}.\d+[+-]\d{{2}}:\d{{2}}]\[{level}] {message}$"#,
         level = level,
         message = message
     ))
@@ -128,12 +128,41 @@ fn app_log_debug_regex(
     line: u32,
 ) -> Result<Regex, regex::Error> {
     Regex::new(&format!(
-        r#"^\[\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}:\d{{2}}:\d{{2}}.\d+\+\d{{2}}:\d{{2}}]\[{level}]\[{span}] {message} at {file}:{line}$"#,
+        r#"^\[\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}:\d{{2}}:\d{{2}}.\d+[+-]\d{{2}}:\d{{2}}]\[{level}]\[{span}] {message} at {file}:{line}$"#,
         level = level,
         span = span,
         message = message,
         file = file,
         line = line,
+    ))
+}
+
+fn server_log_regex(
+    level: &str,
+    span: Option<&str>,
+    target: &str,
+    message: &str,
+    fields: Option<&str>,
+    file: Option<&str>,
+    line: Option<u32>,
+) -> Result<Regex, regex::Error> {
+    Regex::new(&format!(
+        r#"^\{{"timestamp":"\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}:\d{{2}}:\d{{2}}.\d+[+-]\d{{2}}:\d{{2}}","level":"{level}","target":"{target}","span":{span},"message":"{message}"{fields},"file":{file},"line":{line}}}$"#,
+        level = level,
+        target = target,
+        span = span
+            .map(|span| format!("\"{}\"", span))
+            .unwrap_or_else(|| "null".to_string()),
+        message = message,
+        fields = fields
+            .map(|fields| format!(",{}", fields))
+            .unwrap_or_else(|| "".to_string()),
+        file = file
+            .map(|file| format!("\"{}\"", file))
+            .unwrap_or_else(|| "null".to_string()),
+        line = line
+            .map(|line| line.to_string())
+            .unwrap_or_else(|| "null".to_string()),
     ))
 }
 
@@ -283,7 +312,7 @@ fn basic_logging_4() {
             "tests/logging\\.rs",
             line!() - 9,
         )
-            .unwrap();
+        .unwrap();
         assert_regex!(re, msg.as_str());
     }
 
@@ -314,7 +343,7 @@ fn basic_logging_4() {
             "tests/logging\\.rs",
             line!() - 17,
         )
-            .unwrap();
+        .unwrap();
         assert_regex!(re, msg.as_str());
 
         let msg = format!("{}", rx.try_recv().unwrap().escape_default());
@@ -325,7 +354,7 @@ fn basic_logging_4() {
             "tests/logging\\.rs",
             line!() - 22,
         )
-            .unwrap();
+        .unwrap();
         assert_regex!(re, msg.as_str());
     }
 }
@@ -337,8 +366,17 @@ fn basic_logging_5() {
 
     {
         iris::log::error!("ERROR!");
-        let msg = format!("{}", rx.try_recv().unwrap().escape_default());
-        let re = app_log_regex("ERROR", "ERROR!").unwrap();
+        let msg = rx.try_recv().unwrap();
+        let re = server_log_regex(
+            "ERROR",
+            None,
+            "logging",
+            "ERROR!",
+            None,
+            Some("tests/logging\\.rs"),
+            Some(line!() - 9),
+        )
+        .unwrap();
         assert_regex!(re, msg.as_str());
     }
 }
